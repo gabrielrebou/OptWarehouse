@@ -216,7 +216,11 @@ If Julia reports that a package is missing, rerun the setup script for your plat
 
 ## Contact
 
-[![Email](https://img.shields.io/badge/Email-Contact-blue?style=flat-square&logo=gmail&logoColor=white)](mailto:gabrielrebou@hotmail.com.br)
+<p align="center">
+  <a href="https://mail.google.com/mail/?view=cm&fs=1&to=gabrielrebou@hotmail.com.br">
+    <img src="https://img.shields.io/badge/Email-Contact-blue?style=for-the-badge&logo=gmail&logoColor=white" alt="Contact via Gmail">
+  </a>
+</p>
 
 **Gabriel Rebouças**
 
