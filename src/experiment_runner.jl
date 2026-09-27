@@ -4,7 +4,6 @@ using CSV
 using DataFrames
 using Serialization
 
-# allocation_cache_path: só data_id + allocation_method importam aqui
 function allocation_cache_path(cfg::ExperimentConfig; base_dir="Results_cache")
     folder_name = "$(cfg.data_id)-$(cfg.allocation_method)"  # sem heuristic/merge
 
@@ -14,20 +13,32 @@ function allocation_cache_path(cfg::ExperimentConfig; base_dir="Results_cache")
     return joinpath(dir, "allocation_id$(cfg.data_id)_$(cfg.allocation_method).txt")
 end
 
-# Garante um resultado de alocação para (data_id, método):
-#   do_allocation = true  -> roda allocation_main e substitui o cache existente
-#   do_allocation = false -> reaproveita o cache; se não existir, cai para
-#       o cálculo mesmo assim (com aviso), para nunca travar a execução
 function ensure_allocation(cfg::ExperimentConfig, params::Params, do_allocation::Bool)
+    validate_experiment_config(cfg, params)
 
     if !do_allocation
         cache_file = allocation_cache_path(cfg; base_dir="Results")
 
         if isfile(cache_file)
-            return deserialize(cache_file)
+            result = deserialize(cache_file)
+            validate_allocation_strategy_result(result)
+            required_cache_fields = (:instance, :skus, :warehouse)
+            missing_cache_fields = filter(name -> !hasproperty(result, name), required_cache_fields)
+            isempty(missing_cache_fields) ||
+                customization_error(
+                    "Cached allocation is missing $(join(string.(missing_cache_fields), ", ")); " *
+                    "delete that cache entry and rerun allocation to rebuild it."
+                )
+            validate_instance(result.instance, params.data_names[cfg.data_id])
+            validate_allocation_matrix(
+                result.allocations, result.instance, result.skus, result.warehouse,
+                params.allocation.max_variety;
+                capacity_tolerance = params.sku_generation.volumetric_module / 2
+            )
+            return result
         end
 
-        @warn "Alocacao nao encontrada para id=$(cfg.data_id), metodo=$(cfg.allocation_method); calculando mesmo assim."
+        @warn "Allocation not found for ID=$(cfg.data_id), method=$(cfg.allocation_method); calculating it anyway."
     end
 
     result = allocation_main(cfg, params)
@@ -40,15 +51,11 @@ function ensure_allocation(cfg::ExperimentConfig, params::Params, do_allocation:
     return result
 end
 
-# Execução de um experimento (compartilhada entre modo batch e single)
 function run_experiment(cfg::ExperimentConfig, params::Params, do_allocation::Bool)
     mark = @timed ensure_allocation(cfg, params, do_allocation)
     run_experiment_with_allocation(cfg, params, mark.value, mark.time, mark.bytes)
 end
 
-# Recebe um resultado de alocação já pronto (usado pelo batch, que aloca
-# uma vez só por (data_id, método) e reaproveita para todas as combinações
-# de heurística/merge daquele par).
 function run_experiment_with_allocation(
     cfg::ExperimentConfig,
     params::Params,
@@ -56,6 +63,7 @@ function run_experiment_with_allocation(
     allocation_time::Float64,
     allocation_bytes::Int64
 )
+    validate_experiment_config(cfg, params)
 
     if isempty(alloc_result.allocations)
         save_files(cfg, params.data_names[cfg.data_id], allocation_time, allocation_bytes,0,0,0,0,0,0)
@@ -123,8 +131,8 @@ end
 # Modo batch: aloca uma vez por (data_id, método), reaproveita para
 # todas as combinações de heurística/merge daquele par
 function run_batch(params::Params, do_allocation::Bool)
-    min_val = read_int_range("escola o id de início: ",length(params.data_names),1)
-    max_val = read_int_range("escolha o id de fim: ",length(params.data_names),min_val)
+    min_val = read_int_range("Choose the start ID:",length(params.data_names),1)
+    max_val = read_int_range("Choose the end ID:",length(params.data_names),min_val)
     for data_id in min_val:max_val
         for method in instances(AllocationMethod)
 
@@ -141,10 +149,10 @@ function run_batch(params::Params, do_allocation::Bool)
                 cfg = ExperimentConfig(data_id, method, heuristic, merge)
 
                 println(
-                    "id: ", data_id,
-                    "\nmetodo: ", method,
-                    "\nheuristica: ", heuristic,
-                    "\nmerge: ", merge
+                    "ID: ", data_id,
+                    "\nMethod: ", method,
+                    "\nHeuristic: ", heuristic,
+                    "\nMerge strategy: ", merge
                 )
 
                 run_experiment_with_allocation(cfg, params, mark.value, allocation_time, allocation_bytes)

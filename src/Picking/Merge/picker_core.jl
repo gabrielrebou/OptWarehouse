@@ -70,7 +70,7 @@ function build_picker(
     depot_distance::Vector{Float64}
 )
     if isempty(route)
-        throw(ArgumentError("rota nao pode ser vazia"))
+        throw(ArgumentError("Route cannot be empty."))
     end
 
     if length(route) <= 2

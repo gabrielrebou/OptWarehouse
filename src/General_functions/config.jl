@@ -73,5 +73,5 @@ const params = Params(
         "SLAPRP_Guo_small_O50_alpha0.4_v4.txt", "SLAPRP_Guo_small_O50_alpha0.4_v5.txt",
         "SLAPRP_Guo_small_O50_alpha0.4_v6.txt", "SLAPRP_Guo_small_O50_alpha0.4_v7.txt",
         "SLAPRP_Guo_small_O50_alpha0.4_v8.txt", "SLAPRP_Guo_small_O50_alpha0.4_v9.txt"
-    ]
+    ] #data_names
 )

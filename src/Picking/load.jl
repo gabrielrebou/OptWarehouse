@@ -1,0 +1,15 @@
+include(joinpath(@__DIR__, "validation.jl"))
+
+include(joinpath(@__DIR__, "Route", "heuristics", "astar_heuristic.jl"))
+include(joinpath(@__DIR__, "Route", "heuristics", "greedy_heuristic.jl"))
+include(joinpath(@__DIR__, "Route", "selector.jl"))
+include(joinpath(@__DIR__, "Route", "route_orders.jl"))
+include(joinpath(@__DIR__, "Route", "route_main.jl"))
+
+include(joinpath(@__DIR__, "Merge", "heuristics", "clarke_wright_greedy.jl"))
+include(joinpath(@__DIR__, "Merge", "heuristics", "clarke_wright_savings.jl"))
+include(joinpath(@__DIR__, "Merge", "selector.jl"))
+include(joinpath(@__DIR__, "Merge", "merge_routes.jl"))
+include(joinpath(@__DIR__, "Merge", "picker_core.jl"))
+include(joinpath(@__DIR__, "Merge", "position_utils.jl"))
+include(joinpath(@__DIR__, "Merge", "merge_main.jl"))

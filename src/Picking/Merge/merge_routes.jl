@@ -6,7 +6,7 @@
 
 function route_orientations(route::Vector{Int})
     if isempty(route)
-        throw(ArgumentError("rota nao pode ser vazia"))
+        throw(ArgumentError("Route cannot be empty."))
     end
 
     return (copy(route), reverse(route))
@@ -71,7 +71,7 @@ function merge_routes(
 
     if total_before != total_after
         throw(ErrorException(
-            "merge_routes: contagem de skus inconsistente ($total_before antes, $total_after depois)"
+            "merge_routes: inconsistent SKU count ($total_before before, $total_after after)"
         ))
     end
 

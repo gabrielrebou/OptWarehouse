@@ -29,6 +29,10 @@ function merge_main(cfg::ExperimentConfig, params::Params, alloc_result, route_r
     )
 
     merged_pickers = mark.value
+    merged_pickers isa Vector{Pickers} ||
+        customization_error(
+            "Merge strategy $(cfg.merge_strategy) returned $(typeof(merged_pickers)); expected Vector{Pickers}."
+        )
     merge_time, merge_bytes = mark.time, mark.bytes
 
     for picker in merged_pickers

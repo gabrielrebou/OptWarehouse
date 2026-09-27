@@ -1,9 +1,9 @@
-Rota do Picker 1: [0, 2, 26, 50, 89, 69, 84, 30, 64, 46, 10, 8, 67, 45, 9, 87, 27, 7, 21, 0]
-Rota do Picker 2: [0, 83, 37, 11, 0]
-Rota do Picker 3: [0, 83, 30, 87, 56, 20, 97, 70, 67, 47, 69, 96, 84, 9, 27, 7, 21, 37, 46, 8, 45, 50, 1, 3, 11, 0]
-Rota do Picker 4: [0, 70, 27, 45, 46, 9, 8, 87, 47, 7, 30, 10, 64, 84, 26, 67, 50, 69, 0]
+Picker route 1: [0, 41, 1, 45, 8, 27, 87, 56, 97, 40, 37, 10, 60, 83, 30, 50, 46, 96, 84, 9, 7, 21, 26, 94, 0]
+Picker route 2: [0, 36, 84, 69, 89, 30, 26, 83, 21, 7, 27, 87, 9, 45, 1, 8, 10, 46, 0]
+Picker route 3: [0, 7, 98, 40, 77, 37, 93, 12, 56, 31, 55, 39, 0]
+Picker route 4: [0, 70, 27, 45, 46, 9, 8, 87, 47, 7, 69, 50, 67, 26, 10, 30, 0]
 
-Caso de teste: SLAPRP_Guo_small_O50_alpha0.4_v8.txt
+Test case: SLAPRP_Guo_small_O50_alpha0.4_v8.txt
 
-Distancia Total: 562.0
-Quantidade de Pickers: 4
+Total distance: 630.0
+Number of pickers: 4

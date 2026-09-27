@@ -9,15 +9,14 @@ function warehouse_graph(warehouse::Warehouse)
     g = SimpleGraph(n_nos)
 
     # Mapear coordenadas (shelf = X, aisle = Y)
-    # Ignoramos o 'id' conforme solicitado, usando a ordem do vetor
     x = Float64[]
     y = Float64[]
     labels = String[]
 
-    # Adiciona o depósito primeiro (ex: índice 1)
+    # Adiciona o depósito primeiro
     push!(x, warehouse.depot.shelf)
     push!(y, warehouse.depot.aisle)
-    push!(labels, "Depósito")
+    push!(labels, "Depot")
     
     # Adiciona as localizações
     for (i, loc) in enumerate(warehouse.locations)
@@ -29,7 +28,7 @@ function warehouse_graph(warehouse::Warehouse)
     plt = plot(
         xlabel="Shelf", 
         ylabel="Aisle",
-        title="Visualização do Armazém (Warehouse)",
+        title="Warehouse Layout",
         grid=false,
         legend=:best,
     )
@@ -48,15 +47,13 @@ function warehouse_graph(warehouse::Warehouse)
     )
     
     scatter!(x, y, 
-        label="Shelfes", 
+        label="Shelves",
         markersize=8, 
         markercolor=:gray,
         shape =:square
     )
-    # Destacando o depósito com cor diferente
-    scatter!([x[1]], [y[1]], label="Depot", markersize=12, markercolor=:black, shape=:square)
 
-    # Adicionando os rótulos de texto ao lado dos pontos
+    scatter!([x[1]], [y[1]], label="Depot", markersize=12, markercolor=:black, shape=:square)
     for i in eachindex(x)
         annotate!(x[i], y[i] - 0.3, text(labels[i], 8, :center))
     end
@@ -76,7 +73,6 @@ function heatmap_main(matriz::Matrix, title::String)
         aspect_ratio=:equal,
         yflip=true,
         
-        # --- Correção dos Eixos ---
         xlims = (0.5, num_colunas + 0.5), # Define o limite exato do início ao fim das colunas
         xticks = [1;5:5:num_colunas],           # Força os rótulos a irem exatamente de 1 até o número de colunas
         ylims = (0.5, num_linhas + 0.5),  # Opcional: ajusta também o limite vertical
@@ -121,7 +117,6 @@ function plot_allocation(x, warehouse)
     linewidth=4,
     )
     
-    # Todas as posições
     for loc in locations
         scatter!(
             [loc.shelf],
@@ -133,7 +128,6 @@ function plot_allocation(x, warehouse)
             )
     end
 
-    # Posições ocupadas
     for loc in locations
         
         q = x[loc.id, :]
