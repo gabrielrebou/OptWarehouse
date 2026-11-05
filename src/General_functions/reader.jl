@@ -22,7 +22,7 @@ function read_instance(filename)
     orders = Order[]
 
     for i in 1:n_orders
-        line_number = 5 + i
+        line_number = 4 + i
         line_number <= length(lines) ||
             customization_error("Dataset '$filename' declares $n_orders orders but is missing the order on line $line_number.")
         skus = parse_dataset_integer.(split(strip(lines[line_number])), line_number, filename)

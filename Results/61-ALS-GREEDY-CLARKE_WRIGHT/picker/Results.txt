@@ -1,8 +1,0 @@
-Picker route 1: [0, 37, 17, 30, 67, 46, 26, 2, 45, 50, 10, 9, 8, 7, 87, 27, 84, 1, 0]
-Picker route 2: [0, 7, 27, 87, 30, 45, 21, 26, 9, 10, 8, 67, 46, 65, 1, 75, 20, 18, 93, 11, 0]
-Picker route 3: [0, 7, 64, 1, 47, 27, 9, 45, 87, 8, 69, 68, 50, 30, 46, 26, 89, 10, 21, 0]
-
-Test case: SLAPRP_Guo_small_O50_alpha0.2_v1.txt
-
-Total distance: 384.0
-Number of pickers: 3

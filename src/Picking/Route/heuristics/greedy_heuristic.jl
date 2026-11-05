@@ -10,13 +10,15 @@ function nearest_next_shelf(
 )
     isempty(candidates) && return nothing
 
-    validate_index_bounds(current, size(distance_matrix, 1), "current")
-
     best_node = nothing
     best_g = Inf
 
     for node in candidates
-        g = distance_matrix[current, node]
+        validate_index_bounds(node, size(distance_matrix, 1), "candidate")
+        g = current == 0 ? depot_distance[node] : begin
+            validate_index_bounds(current, size(distance_matrix, 1), "current")
+            distance_matrix[current, node]
+        end
 
         if g < best_g
             best_g = g

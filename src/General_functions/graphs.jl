@@ -3,7 +3,7 @@
 using Graphs
 using Plots
 
-function warehouse_graph(warehouse::Warehouse)
+function warehouse_graph(cfg::ExperimentConfig, warehouse::Warehouse)
     # Criar o grafo baseado no número de localizações + depósito
     n_nos = length(warehouse.locations) + 1
     g = SimpleGraph(n_nos)
@@ -58,12 +58,12 @@ function warehouse_graph(warehouse::Warehouse)
         annotate!(x[i], y[i] - 0.3, text(labels[i], 8, :center))
     end
 
-    results_dir::String = joinpath(@__DIR__, "..", "..", "Results_cache", "graphs")
+    results_dir = allocation_graphs_dir(cfg)
     mkpath(results_dir)
     savefig(plt, joinpath(results_dir, "warehouse_graph.png"))
     end
 
-function heatmap_main(matriz::Matrix, title::String)
+function heatmap_main(cfg::ExperimentConfig, matriz::Matrix, title::String)
 
     num_linhas, num_colunas = size(matriz)
 
@@ -79,7 +79,7 @@ function heatmap_main(matriz::Matrix, title::String)
         yticks = [1;5:5:num_linhas]             # Opcional: força marcadores de 1 até o número de linhas
     )
 
-    results_dir::String = joinpath(@__DIR__, "..", "..", "Results_cache", "graphs")
+    results_dir = allocation_graphs_dir(cfg)
     mkpath(results_dir)
 
     filename = replace(title, " " => "_")
@@ -89,7 +89,7 @@ function heatmap_main(matriz::Matrix, title::String)
 
 end
 
-function plot_allocation(x, warehouse)
+function plot_allocation(cfg::ExperimentConfig, x, warehouse)
     
     locations = warehouse.locations
     
@@ -166,7 +166,7 @@ function plot_allocation(x, warehouse)
             text("Depot", 7, :white)
             )
 
-    results_dir::String = joinpath(@__DIR__, "..", "..", "Results_cache", "graphs")
+    results_dir = allocation_graphs_dir(cfg)
     mkpath(results_dir)
     savefig(p, joinpath(results_dir, "allocation.png"))
 

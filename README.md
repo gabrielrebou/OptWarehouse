@@ -2,7 +2,7 @@
 
 Research code for experimenting with **warehouse slotting** (assigning SKUs to storage locations) and **order picking** (routing pickers and merging routes).
 
-The project supports configurable warehouse layouts, SKU inventory generation, multiple allocation methods, routing heuristics, and route-merging strategies. Experiment results are written to `compare.csv` and can be analyzed with the comparison tools in `src/compare_main.jl`.
+The project supports configurable warehouse layouts, SKU inventory generation, multiple allocation methods, routing heuristics, and route-merging strategies. Experiment summaries are written to `compare.csv`; reports and generated plots are stored under `Results/`.
 
 ## Table of contents
 
@@ -53,6 +53,8 @@ The setup scripts install the Julia packages used by the project. They do not la
 
 ## Run an experiment
 
+To start the experiment go to the src folder in your teminal and run julia main.jl 
+
 The program first asks whether to replace the results file:
 
 - **`y`** removes the existing `compare.csv`; results from this run are written to a fresh file.
@@ -60,7 +62,7 @@ The program first asks whether to replace the results file:
 
 Then choose between a single experiment and batch mode. A single run prompts for the dataset, allocation method, routing heuristic, and merge strategy. Batch mode prompts for a dataset ID range and runs the configured method combinations.
 
-The allocation prompt controls whether slotting is recalculated or loaded from the saved results when available. Results and cached allocation artifacts are stored under `Results/` and `Results_cache/`.
+The allocation prompt controls whether slotting is recalculated or loaded from the saved results when available. Allocation caches, reports, and experiment graphs are written directly under `Results/`.
 
 To compare results or generate comparison plots, run the comparison script from the repository root:
 
@@ -73,8 +75,7 @@ julia src/compare_main.jl
 ```text
 .
 ├── Data/                          # Input warehouse instances
-├── Results/                       # Saved experiment outputs and allocations
-├── Results_cache/                 # Intermediate experiment/cache files
+├── Results/                       # Allocation cache, reports, and generated graphs
 ├── compare.csv                    # Accumulated experiment summary
 └── src/
     ├── General_functions/
@@ -113,6 +114,10 @@ julia src/compare_main.jl
 ```
 
 Each subsystem has a `load.jl` file that centralizes its include order. The entry point loads these subsystem files rather than including each implementation individually.
+
+Each dataset is read from `Data/`. The third line declares the number of SKUs and the fourth line declares the number of orders; each order is read from one whitespace-separated line of SKU IDs, starting on line five. Extra lines after the declared orders are ignored.
+
+Experiment artifacts are written in place under `Results/`: allocation caches are in `<data-id>-<method>/Allocation_cache/`, allocation reports in `<data-id>-<method>/allocation/`, allocation graphs in `<data-id>-<method>/graphs/`, picker reports in `<data-id>-<method>-<routing>-<merge>/picker/`, and comparison plots in `Graficos_comparacao/`. `compare.csv` remains the accumulated experiment summary in the repository root.
 
 ## Configuration
 
@@ -157,10 +162,12 @@ The allocation methods are declared by `AllocationMethod` in `General_functions/
 
 ### Picking
 
-Routing heuristics choose the next candidate location for a picker:
+Each routing implementation receives the experiment configuration, the remaining order as SKU IDs, a mutable location-by-SKU stock matrix, SKU data, warehouse, picker capacity, the location distance matrix, and depot distances. It returns `(picker::Pickers, remaining_order::Vector{Int})`; the picker route starts and ends at the depot, while `remaining_order` contains units not collected by that picker. Picked items are represented by repeated SKU IDs in `picker.sku_shelf`, and must be removed from the mutable stock matrix.
 
-- **A\*** — selects using the current travel cost and a look-ahead estimate.
-- **Greedy** — selects the nearest candidate.
+- **A\*** — searches shelf-visit sequences using accumulated route cost and an admissible distance lower bound; it chooses a picker route and returns any demand it could not serve.
+- **Greedy** — repeatedly visits the nearest shelf that can fulfill remaining demand.
+
+The A* search has a total routing time budget of 10 minutes, divided evenly among the dataset's orders; each order's time allowance is shared across all picker routes it needs. If A* reaches its deadline, it keeps the best partial route it found and continues that same picker route greedily from the last A* shelf, using the remaining carrying capacity. If more units remain after that picker is full, additional pickers correctly start at the depot. Routing continues until every order is fully picked; if available stock makes that impossible, the run stops with an explicit error rather than silently recording an incomplete order.
 
 Route-merging strategies combine picker routes:
 
@@ -188,7 +195,7 @@ The allocation matrix must contain non-negative integer quantities, allocate eve
 
 1. Add the heuristic under `Picking/Route/heuristics/` and include it from `Picking/load.jl`.
 2. Register it in `ROUTING_STRATEGIES` in `Picking/Route/selector.jl`.
-3. Use the signature `(current, candidates, distance_matrix, depot_distance)`. Return a candidate location index, or `nothing` when there is no valid candidate.
+3. Implement the routing contract above. The dispatcher checks the returned route, that picked plus unserved SKUs match the input order, that stock changes match reported picks, and that picker capacity is respected.
 4. Add its enum value to `RoutingHeuristic` in `General_functions/types.jl`.
 
 ### Merge strategy

@@ -4,10 +4,10 @@ using CSV
 using DataFrames
 using Serialization
 
-function allocation_cache_path(cfg::ExperimentConfig; base_dir="Results_cache")
+function allocation_cache_path(cfg::ExperimentConfig)
     folder_name = "$(cfg.data_id)-$(cfg.allocation_method)"  # sem heuristic/merge
 
-    dir = joinpath(@__DIR__, "..", base_dir, folder_name, "Allocation_cache")
+    dir = joinpath(@__DIR__, "..", "Results", folder_name, "Allocation_cache")
     mkpath(dir)
 
     return joinpath(dir, "allocation_id$(cfg.data_id)_$(cfg.allocation_method).txt")
@@ -17,7 +17,7 @@ function ensure_allocation(cfg::ExperimentConfig, params::Params, do_allocation:
     validate_experiment_config(cfg, params)
 
     if !do_allocation
-        cache_file = allocation_cache_path(cfg; base_dir="Results")
+        cache_file = allocation_cache_path(cfg)
 
         if isfile(cache_file)
             result = deserialize(cache_file)
@@ -44,7 +44,7 @@ function ensure_allocation(cfg::ExperimentConfig, params::Params, do_allocation:
     result = allocation_main(cfg, params)
 
     if !isempty(result.allocations)
-        cache_file = allocation_cache_path(cfg; base_dir="Results_cache")
+        cache_file = allocation_cache_path(cfg)
         serialize(cache_file, result)
     end
 
@@ -85,42 +85,7 @@ function run_experiment_with_allocation(
         save_files(cfg, params.data_names[cfg.data_id], allocation_time, allocation_bytes, route_time, route_bytes, merge_time, merge_bytes, merged_pickers.distance, merged_pickers.sum_pickers)
     end
 
-    archive_results(cfg)
-
     return nothing
-end
-
-function archive_results(cfg::ExperimentConfig)
-    results_cache_dir = joinpath(@__DIR__, "..", "Results_cache")
-    results_dir = joinpath(@__DIR__, "..", "Results")
-    mkpath(results_dir)
-
-    # pasta do experimento completo (heuristica + merge) -> Results/
-    exp_folder = "$(cfg.data_id)-$(cfg.allocation_method)-$(cfg.routing_heuristic)-$(cfg.merge_strategy)"
-    cache_experiment_dir = joinpath(results_cache_dir, exp_folder)
-    results_experiment_dir = joinpath(results_dir, exp_folder)
-
-    if isdir(cache_experiment_dir)
-        isdir(results_experiment_dir) && rm(results_experiment_dir; recursive=true, force=true)
-        mkpath(results_experiment_dir)
-        for item in readdir(cache_experiment_dir)
-            cp(joinpath(cache_experiment_dir, item), joinpath(results_experiment_dir, item); force=true)
-        end
-        rm(cache_experiment_dir; recursive=true, force=true)  # só a pasta deste experimento
-    end
-
-    # pasta da alocação (só data_id + method) -> preservada entre combinações
-    alloc_folder = "$(cfg.data_id)-$(cfg.allocation_method)"
-    cache_alloc_dir = joinpath(results_cache_dir, alloc_folder)
-    results_alloc_dir = joinpath(results_dir, alloc_folder)
-
-    if isdir(cache_alloc_dir)
-        mkpath(results_alloc_dir)
-        for item in readdir(cache_alloc_dir)
-            cp(joinpath(cache_alloc_dir, item), joinpath(results_alloc_dir, item); force=true)
-        end
-        rm(cache_alloc_dir; recursive=true, force=true)
-    end
 end
 
 # Modo batch: aloca uma vez por (data_id, método), reaproveita para

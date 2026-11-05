@@ -2,8 +2,8 @@ include(joinpath(@__DIR__, "validation.jl"))
 
 include(joinpath(@__DIR__, "Route", "heuristics", "astar_heuristic.jl"))
 include(joinpath(@__DIR__, "Route", "heuristics", "greedy_heuristic.jl"))
-include(joinpath(@__DIR__, "Route", "selector.jl"))
 include(joinpath(@__DIR__, "Route", "route_orders.jl"))
+include(joinpath(@__DIR__, "Route", "selector.jl"))
 include(joinpath(@__DIR__, "Route", "route_main.jl"))
 
 include(joinpath(@__DIR__, "Merge", "heuristics", "clarke_wright_greedy.jl"))

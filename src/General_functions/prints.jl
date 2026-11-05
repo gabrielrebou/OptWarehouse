@@ -2,8 +2,18 @@
 
 using Statistics
 
-function print_allocation(warehouse::Warehouse, instance::Instance, cooc::CooccurrenceMatrix, skus::Vector{SKU}, sparse_matrix, S_hat::Matrix, P::Matrix, W::Matrix, S_hat_hat::Matrix, allocations::Matrix, do_message_passing::Bool)
-    results_dir = joinpath(@__DIR__, "..", "..", "Results_cache", "allocation")
+function allocation_results_dir(cfg::ExperimentConfig)
+    folder_name = "$(cfg.data_id)-$(cfg.allocation_method)"
+    return joinpath(@__DIR__, "..", "..", "Results", folder_name, "allocation")
+end
+
+function allocation_graphs_dir(cfg::ExperimentConfig)
+    folder_name = "$(cfg.data_id)-$(cfg.allocation_method)"
+    return joinpath(@__DIR__, "..", "..", "Results", folder_name, "graphs")
+end
+
+function print_allocation(cfg::ExperimentConfig, warehouse::Warehouse, instance::Instance, cooc::CooccurrenceMatrix, skus::Vector{SKU}, sparse_matrix, S_hat::Matrix, P::Matrix, W::Matrix, S_hat_hat::Matrix, allocations::Matrix, do_message_passing::Bool)
+    results_dir = allocation_results_dir(cfg)
     mkpath(results_dir)
 
     results_path = joinpath(results_dir, "Results.txt")
@@ -71,7 +81,7 @@ function print_pickers(
     sum_pickers::Int
 )
     folder_name = "$(cfg.data_id)-$(cfg.allocation_method)-$(cfg.routing_heuristic)-$(cfg.merge_strategy)"
-    results_dir = joinpath(@__DIR__, "..", "..", "Results_cache", folder_name, "picker")
+    results_dir = joinpath(@__DIR__, "..", "..", "Results", folder_name, "picker")
     mkpath(results_dir)
     results_path = joinpath(results_dir, "Results.txt")
 

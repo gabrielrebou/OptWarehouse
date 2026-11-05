@@ -6,6 +6,8 @@
 # (route_orders). Nao sabe qual heuristica esta em uso -- isso e
 # responsabilidade de selector.jl.
 
+using Dates
+
 function route_order!(
     cfg::ExperimentConfig,
     order::Vector{Int},
@@ -13,15 +15,31 @@ function route_order!(
     skus::Vector{SKU},
     warehouse::Warehouse,
     picker_capacity::Int,
-    distance_matrix::Matrix{Float64}
+    distance_matrix::Matrix{Float64};
+    budget::RoutingBudget = new_routing_budget(1)
 )
     validate_positive(picker_capacity, "picker_capacity")
+    depot_distance = compute_depot_distance(cfg, warehouse)
+    return route_order_selector(
+        cfg.routing_heuristic, cfg, order, stock, skus, warehouse,
+        picker_capacity, distance_matrix, depot_distance, budget
+    )
+end
 
+function greedy_route_order!(
+    cfg::ExperimentConfig,
+    order::Vector{Int},
+    stock::Matrix{Int},
+    skus::Vector{SKU},
+    warehouse::Warehouse,
+    picker_capacity::Int,
+    distance_matrix::Matrix{Float64},
+    depot_distance::Vector{Float64},
+    ::RoutingBudget
+)
     depot = warehouse.depot
     locations = warehouse.locations
     n_locations = length(locations)
-
-    depot_distance = compute_depot_distance(cfg,warehouse)
 
     demand = Dict{Int,Int}()
 
@@ -34,7 +52,7 @@ function route_order!(
     push!(sku_shelf, [0])          # deposito no inicio, sem skus
     distance = Float64[0.0]        # nenhuma distancia percorrida ainda
 
-    current = 1
+    current = 0
     used_capacity = 0.0
 
     while !isempty(demand)
@@ -75,9 +93,7 @@ function route_order!(
             break
         end
 
-        next = next_shelf_selector(
-            cfg.routing_heuristic, current, candidates, distance_matrix, depot_distance
-        )
+        next = nearest_next_shelf(current, candidates, distance_matrix, depot_distance)
 
         if next === nothing
             break
@@ -132,7 +148,9 @@ function route_order!(
             continue
         end
 
-        push!(distance, distance_matrix[current, next])
+        segment_distance = current == 0 ?
+            depot_distance[next] : distance_matrix[current, next]
+        push!(distance, segment_distance)
         push!(route, location.id)
         push!(sku_shelf, picked_skus)
 
@@ -145,7 +163,7 @@ function route_order!(
         end
     end
 
-    if current != 1 || length(route) > 1
+    if current != 0
         push!(distance, depot_distance[current])
         push!(route, depot.id)
         push!(sku_shelf, [0])
@@ -161,7 +179,7 @@ function route_order!(
 
     picker = Pickers(route, sku_shelf, distance)
 
-    validate_picker(picker)
+    validate_picker(picker; depot_id=depot.id)
 
     return picker, remaining_order
 end
@@ -178,6 +196,10 @@ function route_orders(
 )
     validate_positive(picker_capacity, "picker_capacity")
 
+    if cfg.routing_heuristic == ASTAR_HEURISTIC
+        println("A* routing started at ", Dates.format(Dates.now(), "yyyy-mm-dd HH:MM:SS"))
+    end
+
     remaining_stock = copy(allocations)
 
     # cada pedido pode precisar de varios pickers, entao guardamos
@@ -188,35 +210,41 @@ function route_orders(
     # Rever outras estrategias de distribuicao do estoque entre
     # pedidos depois.
 
+    order_count = length(instances.orders)
     for (i, order) in enumerate(instances.orders)
-
-        total_volume = sum(skus[sku].volume for sku in order.skus)
-        max_pickers = ceil(Int, total_volume / picker_capacity)
+        budget = new_routing_budget(order_count)
 
         remaining_order = copy(order.skus)
         pickers_for_order = Pickers[]
 
-        for j in 1:max_pickers
-
-            if isempty(remaining_order)
-                break
-            end
-
+        while !isempty(remaining_order)
+            use_greedy_fallback = cfg.routing_heuristic == ASTAR_HEURISTIC && budget.exhausted
+            route_cfg = use_greedy_fallback ?
+                ExperimentConfig(cfg.data_id, cfg.allocation_method, GREEDY, cfg.merge_strategy) :
+                cfg
             picker, remaining_order = route_order!(
-                cfg, remaining_order, remaining_stock, skus,
-                warehouse, picker_capacity, distance_matrix
+                route_cfg, remaining_order, remaining_stock, skus,
+                warehouse, picker_capacity, distance_matrix;
+                budget
             )
 
-            if length(picker.picker_rout) <= 1
-                println("Aviso: nao foi possivel atender completamente o pedido.")
-                break
+            picked_count = count(!=(0), Iterators.flatten(picker.sku_shelf))
+            if picked_count <= 0
+                if budget.exhausted && !use_greedy_fallback
+                    continue
+                end
+                customization_error(
+                    "Could not fulfill order $i: no feasible picker route remains for " *
+                    "$(length(remaining_order)) requested units. Check allocated stock and SKU volumes."
+                )
             end
 
             push!(pickers_for_order, picker)
         end
 
-        if !isempty(remaining_order)
-            println("Aviso: pedido $i nao foi completamente atendido.")
+        if budget.exhausted && cfg.routing_heuristic == ASTAR_HEURISTIC
+            @warn "A* time budget reached for order $i; completed the current route greedily from the last A* shelf. " *
+                  "Any demand left due to picker capacity will use additional routes from the depot."
         end
 
         results[i] = pickers_for_order
@@ -224,4 +252,3 @@ function route_orders(
 
     return results
 end
-

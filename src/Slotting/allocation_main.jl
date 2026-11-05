@@ -95,7 +95,7 @@ function allocation_main(cfg::ExperimentConfig, params::Params)
     depot_id = warehouse.depot.id
 
     cooc = cooccurrence_matrix(instance.orders, instance.n_skus)
-    heatmap_main(cooc.matrix, "Co-occurrence Matrix")
+    heatmap_main(cfg, cooc.matrix, "Co-occurrence Matrix")
     skus = generate_skus(params, instance, warehouse)
 
     distance_matrix = build_distance_matrix(cfg,warehouse.locations)
@@ -145,23 +145,23 @@ function report_allocation(cfg::ExperimentConfig, result)
     do_message_passing = cfg.allocation_method == MESSAGE_PASSING
 
     print_allocation(
-        result.warehouse, result.instance, result.cooc, result.skus,
+        cfg, result.warehouse, result.instance, result.cooc, result.skus,
         result.sparse_matrix, result.S_hat, result.P, result.W, result.S_hat_hat,
         result.allocations, do_message_passing
     )
 
-    warehouse_graph(result.warehouse)
-    heatmap_main(result.cooc.matrix, "Co-occurrence Matrix")
-    heatmap_main(result.distance_matrix, "Distance Matrix")
-    plot_allocation(result.allocations, result.warehouse)
+    warehouse_graph(cfg, result.warehouse)
+    heatmap_main(cfg, result.cooc.matrix, "Co-occurrence Matrix")
+    heatmap_main(cfg, result.distance_matrix, "Distance Matrix")
+    plot_allocation(cfg, result.allocations, result.warehouse)
 
     if cfg.allocation_method in (ALS, MESSAGE_PASSING)
-        heatmap_main(result.S_hat, "ALS S_hat Matrix")
+        heatmap_main(cfg, result.S_hat, "ALS S_hat Matrix")
     end
 
     if do_message_passing
-        heatmap_main(result.P, "Normalized Co-occurrence Matrix")
-        heatmap_main(result.W, "Distance Correlation Matrix")
-        heatmap_main(result.S_hat_hat, "Message Passing S_hat_hat Matrix")
+        heatmap_main(cfg, result.P, "Normalized Co-occurrence Matrix")
+        heatmap_main(cfg, result.W, "Distance Correlation Matrix")
+        heatmap_main(cfg, result.S_hat_hat, "Message Passing S_hat_hat Matrix")
     end
 end

@@ -30,7 +30,7 @@ using Printf
 
 gr()
 const COMPARE_CSV_PATH = joinpath(@__DIR__, "..", "compare.csv")
-const GRAFICOS_DIR     = joinpath(@__DIR__, "..", "Graficos_comparacao")
+const GRAFICOS_DIR     = joinpath(@__DIR__, "..", "Results", "Graficos_comparacao")
 
 function ensure_output_dirs()
     hist_dir = joinpath(GRAFICOS_DIR, "Histogramas")

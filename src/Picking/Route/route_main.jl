@@ -4,10 +4,7 @@ function route_main(cfg::ExperimentConfig, params::Params, alloc_result)
 
     validate_positive(params.picking.picker_capacity, "picker_capacity")
 
-    # Nota: cfg.routing_heuristic e o enum RoutingHeuristic em si.
-    # route_orders -> route_order! ja despacham para a heuristica
-    # correta via next_shelf_selector (Route/selector.jl), entao nao
-    # ha necessidade de resolver um "next_shelf_fn" aqui.
+    # route_order! dispatches the full picker-route strategy through the selector.
     mark = @timed route_orders(
         cfg,
         alloc_result.instance,
