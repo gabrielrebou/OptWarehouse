@@ -51,8 +51,15 @@ function generate_skus(params::Params, instance::Instance, warehouse::Warehouse)
 
     volumes = raw_volume
 
+    all(volumes .<= params.picking.picker_capacity) ||
+        customization_error(
+            "Generated SKU volume exceeds picker capacity; no route can collect that SKU."
+        )
+
     # garante atender pedidos
     quantity = max.(frequency, 1)
+    all(quantity .>= frequency) ||
+        customization_error("Generated SKU stock is below the total demand in the instance.")
 
     max_volume = warehouse.capacity * params.warehouse_config.filling_rate
     current_volume = sum(quantity .* volumes)

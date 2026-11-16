@@ -89,7 +89,14 @@ function greedy_route_order!(
         end
 
         if isempty(candidates)
-            println("Aviso: estoque insuficiente para atender o pedido.")
+            stock_remains_for_demand = any(
+                sku -> demand[sku] > 0 &&
+                    any(location -> stock[location.id, sku] > 0, locations),
+                keys(demand)
+            )
+            if !stock_remains_for_demand
+                println("Aviso: estoque insuficiente para atender o pedido.")
+            end
             break
         end
 
@@ -201,6 +208,21 @@ function route_orders(
     end
 
     remaining_stock = copy(allocations)
+
+    required_stock = zeros(Int, length(skus))
+    for order in instances.orders, sku in order.skus
+        required_stock[sku] += 1
+    end
+    available_stock = vec(sum(allocations; dims=1))
+    for sku in eachindex(required_stock)
+        if available_stock[sku] < required_stock[sku]
+            @warn "Allocated stock cannot cover all orders." sku=sku requested=required_stock[sku] available=available_stock[sku]
+            throw(ArgumentError(
+                "Insufficient allocated stock for SKU $sku: requested $(required_stock[sku]), " *
+                "available $(available_stock[sku])."
+            ))
+        end
+    end
 
     # cada pedido pode precisar de varios pickers, entao guardamos
     # um Vector{Pickers} por pedido

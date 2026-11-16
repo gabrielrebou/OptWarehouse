@@ -1,7 +1,7 @@
 # src/main.jl
 
 print("\033[2J\033[H")
-printstyled("\nIt may take a while to start up; please wait."; color = :blue, bold = true)
+printstyled("\nIt may take a while to start up; please wait."; color = :cyan, bold = true)
 println("")
 
 include(joinpath(@__DIR__, "General_functions", "load.jl"))
@@ -29,8 +29,6 @@ function main()
         do_allocation = read_do_allocation()
         run_experiment(cfg, params, do_allocation)
     end
-
-    write_results_csv()
 
     println("Execution finished. Press Enter to exit and clear the terminal...")
     readline()

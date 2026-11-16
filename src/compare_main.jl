@@ -1,25 +1,12 @@
-# src/compare_functions.jl
-#
-# Analise comparativa dos resultados salvos em compare.csv:
-#   - Tabelas numericas impressas no terminal (brutas, agregadas e ranking)
-#   - Histogramas de distancia e pickers, separados por merge_strategy:
-#       CLARKE_WRIGHT (completo) / CLARKE_WRIGHT_HEURISTIC / NO_HEURISTIC
-#   - Boxplots (facetados por routing_heuristic) de distancia e pickers
-#   - Performance profile (Dolan-More), um por merge_strategy
-#
-# Uso:
-#   1) Isolado, no terminal (a partir da pasta src/):
-#        julia --project=.. compare_functions.jl
-#      (o --project=.. ativa o ambiente do projeto, na pasta pai de src/,
-#       onde deve estar o Project.toml com CSV/DataFrames/Plots/StatsPlots)
-#
-#   2) Incluido a partir de outro arquivo (ex.: main.jl):
-#        include("compare_functions.jl")
-#        gerar_comparacoes()
-#      Nesse caso a funcao NAO roda automaticamente; e preciso chama-la.
+# Gera um relatorio textual e graficos a partir do compare.csv.
 
 import Pkg
-Pkg.activate(joinpath(@__DIR__, ".."))
+
+const PROJECT_DIR = normpath(joinpath(@__DIR__, ".."))
+
+if Base.active_project() != joinpath(PROJECT_DIR, "Project.toml")
+    Pkg.activate(PROJECT_DIR; io=devnull)
+end
 
 using CSV
 using DataFrames
@@ -28,9 +15,15 @@ using StatsPlots
 using Statistics
 using Printf
 
+
+if !isdefined(@__MODULE__, :MergeHeuristic)
+    include(joinpath(@__DIR__, "General_functions", "types.jl"))
+end
+
 gr()
 const COMPARE_CSV_PATH = joinpath(@__DIR__, "..", "compare.csv")
-const GRAFICOS_DIR     = joinpath(@__DIR__, "..", "Results", "Graficos_comparacao")
+const REPORT_TXT_PATH  = joinpath(@__DIR__, "..", "compare.txt")
+const GRAFICOS_DIR     = joinpath(@__DIR__, "..", "Graficos_comparacao")
 
 function ensure_output_dirs()
     hist_dir = joinpath(GRAFICOS_DIR, "Histogramas")
@@ -50,12 +43,31 @@ function load_compare_data(path::AbstractString = COMPARE_CSV_PATH)
     end
 
     df = CSV.read(path, DataFrame)
-
-    df.config_label = string.(
-        df.allocation_method, " | ",
-        df.routing_heuristic, " | ",
-        df.merge_strategy
+    required_columns = [
+        :data_id, :data_name, :allocation_method, :routing_heuristic, :merge_strategy,
+        :allocation_time, :allocation_bytes, :route_time, :route_bytes,
+        :merge_time, :merge_bytes, :distance, :sum_pickers,
+    ]
+    missing_columns = setdiff(required_columns, Symbol.(names(df)))
+    isempty(missing_columns) || error(
+        "compare.csv is missing columns from the current experiment output: " *
+        join(string.(missing_columns), ", ")
     )
+
+    for (column, enum_type) in (
+        (:allocation_method, AllocationMethod),
+        (:routing_heuristic, RoutingHeuristic),
+        (:merge_strategy, MergeHeuristic),
+    )
+        valid_values = string.(instances(enum_type))
+        values = string.(df[!, column])
+        unknown_values = setdiff(unique(values), valid_values)
+        isempty(unknown_values) || error(
+            "Unknown values in $(column), not registered in General_functions/types.jl: " *
+            join(unknown_values, ", ")
+        )
+        df[!, column] = values
+    end
 
     return df
 end
@@ -68,49 +80,55 @@ end
 
 function add_ratio_columns!(df::DataFrame)
     transform!(
-        groupby(df, :data_id),
+        groupby(df, [:data_id, :merge_strategy]),
         :distance    => (x -> x ./ minimum(x)) => :distance_ratio,
         :sum_pickers => (x -> x ./ minimum(x)) => :pickers_ratio,
     )
     return df
 end
 
-const MERGE_GROUP_INFO = [
-    ("CLARKE_WRIGHT",           "clarke",            "Clarke-Wright merge (standard)"),
-    ("CLARKE_WRIGHT_HEURISTIC", "clarke_heuristic",  "Clarke-Wright merge (heuristic)"),
-    ("NO_HEURISTIC",            "no_merge",           "No merge"),
-]
-
 function split_merge_groups(df::DataFrame)
-    grupos = NamedTuple[]
-    valores_conhecidos = first.(MERGE_GROUP_INFO)
-
-    for (valor, slug, label) in MERGE_GROUP_INFO
-        sub = filter(row -> row.merge_strategy == valor, df)
-        push!(grupos, (slug = slug, label = label, df = sub))
-    end
-
-    outros = filter(row -> !(row.merge_strategy in valores_conhecidos), df)
-    if !isempty(outros)
-        for valor in unique(outros.merge_strategy)
-            sub = filter(row -> row.merge_strategy == valor, outros)
-            push!(grupos, (slug = "other_$(valor)", label = "Merge: $(valor)", df = sub))
-        end
-    end
-
-    return grupos
+    configured = string.(instances(MergeHeuristic))
+    present = Set(df.merge_strategy)
+    return [
+        (slug = _safe_filename(value), label = value,
+         df = filter(row -> row.merge_strategy == value, df))
+        for value in configured if value in present
+    ]
 end
 
 _safe_filename(s::AbstractString) = replace(s, r"[^A-Za-z0-9_\-]" => "_")
 
-fmt_value(x::AbstractFloat) = isnan(x) ? "—" : @sprintf("%.3f", x)
+fmt_value(x::AbstractFloat) = isnan(x) ? "n/a" : isinf(x) ? "infinito" : @sprintf("%.3f", x)
 fmt_value(x::Integer) = string(x)
+fmt_value(::Missing) = "n/a"
 fmt_value(x) = string(x)
 
-# Imprime um DataFrame formatado como tabela de texto alinhada.
-function print_table(df::DataFrame)
+const COLUMN_LABELS = Dict(
+    "data_id" => "ID",
+    "data_name" => "Instância",
+    "allocation_method" => "Alocação",
+    "routing_heuristic" => "Roteamento",
+    "merge_strategy" => "Merge",
+    "distance" => "Distância",
+    "sum_pickers" => "Pickers",
+    "allocation_time" => "Tempo alocacao (s)",
+    "route_time" => "Tempo rota (s)",
+    "merge_time" => "Tempo merge (s)",
+    "distance_ratio" => "Razão distância",
+    "pickers_ratio" => "Razão pickers",
+    "mean" => "Media",
+    "median" => "Mediana",
+    "std_dev" => "Desvio padrão",
+    "min" => "Minimo",
+    "max" => "Maximo",
+    "n_instances" => "Instancias",
+    "runs" => "Execucoes",
+)
+
+function print_table(io::IO, df::DataFrame)
     if isempty(df)
-        println("(no data)")
+        println(io, "Sem dados.")
         return
     end
 
@@ -118,127 +136,168 @@ function print_table(df::DataFrame)
     str_cols = Dict(c => [fmt_value(df[i, c]) for i in 1:nrow(df)] for c in cols)
     widths = Dict(c => max(length(c), maximum(length.(str_cols[c]); init = 0)) for c in cols)
 
-    header = join([rpad(c, widths[c]) for c in cols], " | ")
-    println(header)
-    println("-"^length(header))
+    headers = Dict(c => get(COLUMN_LABELS, c, c) for c in cols)
+    widths = Dict(c => max(widths[c], length(headers[c])) for c in cols)
+    header = join([rpad(headers[c], widths[c]) for c in cols], " | ")
+    println(io, header)
+    println(io, "-"^length(header))
 
     for i in 1:nrow(df)
-        println(join([rpad(str_cols[c][i], widths[c]) for c in cols], " | "))
+        println(io, join([rpad(str_cols[c][i], widths[c]) for c in cols], " | "))
     end
 end
 
-# Tabela agregada (media, mediana, desvio, min, max, n) por grupo.
+function aggregate_config_results(df::DataFrame)
+    group_columns = [
+        :data_id, :data_name, :allocation_method, :routing_heuristic, :merge_strategy,
+    ]
+    return combine(
+        groupby(df, group_columns),
+        :allocation_time => mean => :allocation_time,
+        :route_time => mean => :route_time,
+        :merge_time => mean => :merge_time,
+        :distance => mean => :distance,
+        :sum_pickers => mean => :sum_pickers,
+        nrow => :runs,
+    )
+end
+
+function valid_result(row)
+    for metric in (row.distance, row.sum_pickers)
+        if ismissing(metric) || !(metric isa Real) || !isfinite(metric) || metric <= 0
+            return false
+        end
+    end
+    return true
+end
+
+function invalid_result_reason(row)
+    reasons = String[]
+    for (label, metric) in (("distancia", row.distance), ("pickers", row.sum_pickers))
+        if ismissing(metric)
+            push!(reasons, "$label ausente")
+        elseif !(metric isa Real) || !isfinite(metric)
+            push!(reasons, "$label invalida")
+        elseif metric <= 0
+            push!(reasons, "$label nao positiva")
+        end
+    end
+    return join(reasons, "; ")
+end
+
 function print_summary_table(
+    io::IO,
     df::DataFrame,
     group_cols::Vector{Symbol},
     value_col::Symbol,
     title_str::AbstractString,
 )
-    println("\n-- $title_str --")
+    println(io, "\n$title_str")
 
     if isempty(df)
-        println("(no data)")
+        println(io, "Sem dados.")
         return
     end
 
-    resumo = combine(
+    summary = combine(
         groupby(df, group_cols),
         value_col => mean => :mean,
         value_col => median => :median,
         value_col => std => :std_dev,
         value_col => minimum => :min,
         value_col => maximum => :max,
-        nrow => :n,
+        nrow => :n_instances,
+        :runs => sum => :runs,
     )
-    sort!(resumo, :mean)
+    sort!(summary, :mean)
 
-    print_table(resumo)
+    print_table(io, summary)
 end
 
-# Ranking geral: media da razao (em relacao ao melhor por instancia)
-# de cada configuracao completa, do melhor para o pior.
-function print_ranking(df::DataFrame, ratio_col::Symbol, title_str::AbstractString)
-    println("\n-- Ranking — $title_str (mean ratio to the best result per instance) --")
+function print_ranking(io::IO, df::DataFrame, ratio_col::Symbol, title_str::AbstractString)
+    println(io, "\nRanking por $title_str (menor razao media e melhor)")
 
-    resumo = combine(
-        groupby(df, :config_label),
+    summary = combine(
+        groupby(df, [:allocation_method, :routing_heuristic]),
         ratio_col => mean => :mean_ratio,
-        nrow => :n,
+        nrow => :n_instances,
+        :runs => sum => :runs,
     )
-    sort!(resumo, :mean_ratio)
+    sort!(summary, :mean_ratio)
 
-    print_table(resumo)
+    rename!(summary, :mean_ratio => :mean)
+    print_table(io, summary)
 end
 
-function imprimir_tabelas(df::DataFrame)
-    println("="^78)
-    println("RAW RESULTS (compare.csv)")
-    println("="^78)
+function write_analysis_report(io::IO, source_path::AbstractString, all_rows::DataFrame)
+    valid_rows = filter(valid_result, all_rows)
+    invalid_rows = filter(row -> !valid_result(row), all_rows)
 
-    cols_brutos = [
+    println(io, "Relatório de comparação")
+    println(io, "CSV: ", abspath(source_path))
+    println(io, "Registros: $(nrow(all_rows)); válidos: $(nrow(valid_rows)); excluídos: $(nrow(invalid_rows))")
+    println(io, "Distância é a soma dos percursos; pickers é a quantidade de rotas.")
+    println(io, "As estatísticas são descritivas; não incluem testes de significância.")
+
+    if !isempty(invalid_rows)
+        println(io, "\nRegistros excluidos")
+        invalid_table = DataFrame(
+            id = invalid_rows.data_id,
+            allocation_method = invalid_rows.allocation_method,
+            routing_heuristic = invalid_rows.routing_heuristic,
+            merge_strategy = invalid_rows.merge_strategy,
+            motivo = [invalid_result_reason(row) for row in eachrow(invalid_rows)],
+        )
+        print_table(io, invalid_table)
+    end
+
+    if isempty(valid_rows)
+        println(io, "\nNenhum registro válido para análise.")
+        return DataFrame()
+    end
+
+    results = add_ratio_columns!(aggregate_config_results(valid_rows))
+    if isempty(results)
+        println(io, "\nNenhum registro válido para análise.")
+        return results
+    end
+
+    println(io, "\nResultados por instância")
+    println(io, "As médias por configuração agrupam execuções repetidas; cada instância tem o mesmo peso nas médias gerais.")
+    columns = [
         :allocation_method, :routing_heuristic, :merge_strategy,
-        :distance, :sum_pickers,
-        :allocation_time, :route_time, :merge_time,
+        :distance, :sum_pickers, :allocation_time, :route_time, :merge_time,
     ]
-
-    for data_id in sort(unique(df.data_id))
-        sub = filter(row -> row.data_id == data_id, df)
-        nome = first(sub.data_name)
-        println("\n--- Test case ID=$data_id ($nome) — sorted by distance ---")
-        sub_ordenado = sort(sub, :distance)
-        print_table(select(sub_ordenado, cols_brutos))
+    for data_id in sort(unique(valid_rows.data_id))
+        instance_rows = filter(row -> row.data_id == data_id, valid_rows)
+        println(io, "\nID $(data_id) - $(first(instance_rows.data_name))")
+        print_table(io, select(sort(instance_rows, :distance), columns))
     end
 
-    println("\n" * "="^78)
-    println("STATISTICS BY ALLOCATION METHOD (within each merge group)")
-    println("="^78)
-    println("""
-    Each group below shows two views, always split by
-    allocation_method + routing_heuristic (combining them would hide
-    differences of up to ~30% between ASTAR and GREEDY for the same
-    method/merge):
-
-      (raw)    -> mean/median/etc. of distance and picker count as
-                  absolute values, aggregated across all instances
-                  (data_id) without adjustment. Larger instances
-                  therefore have a greater effect on the mean.
-
-      (ratio)  -> the same metrics, but each value is divided by the
-                  best result for THE SAME INSTANCE (1.0 = best for
-                  that instance). This fairly compares methods even
-                  across different instance sizes and is recommended
-                  for determining whether method X is better than Y.
-    """)
-
-    for grupo in split_merge_groups(df)
-        println("\n### $(grupo.label) ###")
-
-        println("\n[raw, unnormalized values]")
+    for group in split_merge_groups(results)
+        println(io, "\nMerge: $(group.label)")
         print_summary_table(
-            grupo.df, [:allocation_method, :routing_heuristic], :distance,
-            "Distance by method and heuristic (raw)",
+            io, group.df, [:allocation_method, :routing_heuristic], :distance,
+            "Distancia total (unidades do modelo)",
         )
         print_summary_table(
-            grupo.df, [:allocation_method, :routing_heuristic], :sum_pickers,
-            "Picker count by method and heuristic (raw)",
+            io, group.df, [:allocation_method, :routing_heuristic], :sum_pickers,
+            "Quantidade de pickers",
         )
-
-        println("\n[normalized values — ratio to the best result per instance]")
+        println(io, "\nRazão relativa ao melhor resultado da mesma instância e merge (1,0 = melhor)")
         print_summary_table(
-            grupo.df, [:allocation_method, :routing_heuristic], :distance_ratio,
-            "Distance by method and heuristic (ratio)",
+            io, group.df, [:allocation_method, :routing_heuristic], :distance_ratio,
+            "Distancia relativa",
         )
         print_summary_table(
-            grupo.df, [:allocation_method, :routing_heuristic], :pickers_ratio,
-            "Picker count by method and heuristic (ratio)",
+            io, group.df, [:allocation_method, :routing_heuristic], :pickers_ratio,
+            "Pickers relativos",
         )
+        print_ranking(io, group.df, :distance_ratio, "distancia")
+        print_ranking(io, group.df, :pickers_ratio, "pickers")
     end
 
-    println("\n" * "="^78)
-    println("OVERALL RANKING OF COMPLETE CONFIGURATIONS")
-    println("="^78)
-    print_ranking(df, :distance_ratio, "Distance")
-    print_ranking(df, :pickers_ratio, "Picker count")
+    return results
 end
 
 function plot_grouped_histogram(
@@ -252,7 +311,6 @@ function plot_grouped_histogram(
     bins::Int = 12,
 )
     if isempty(df)
-        @warn "DataFrame is empty for \"$title_str\"; chart was not generated."
         return nothing
     end
 
@@ -261,7 +319,7 @@ function plot_grouped_histogram(
     p = plot(
         title = title_str,
         xlabel = xlabel_str,
-        ylabel = "Frequency",
+        ylabel = "Frequência",
         legend = :outertopright,
         legendfontsize = 7,
         titlefontsize = 10,
@@ -282,34 +340,34 @@ function gerar_histogramas(df::DataFrame, hist_dir::AbstractString)
     for grupo in split_merge_groups(df)
         plot_grouped_histogram(
             grupo.df, :distance, :allocation_method,
-            "Distance (raw) — $(grupo.label)",
+                "Distancia total - $(grupo.label)",
             "hist_distance_$(_safe_filename(grupo.slug))_raw.png",
             hist_dir;
-            xlabel_str = "Distance",
+                xlabel_str = "Distancia",
         )
 
         plot_grouped_histogram(
             grupo.df, :sum_pickers, :allocation_method,
-            "Picker count (raw) — $(grupo.label)",
+              "Quantidade de pickers - $(grupo.label)",
             "hist_picker_count_$(_safe_filename(grupo.slug))_raw.png",
             hist_dir;
-            xlabel_str = "Picker count",
+              xlabel_str = "Pickers",
         )
 
         plot_grouped_histogram(
             grupo.df, :distance_ratio, :allocation_method,
-            "Distance (ratio vs. best) — $(grupo.label)",
+              "Razao de distancia - $(grupo.label)",
             "hist_distance_$(_safe_filename(grupo.slug))_ratio.png",
             hist_dir;
-            xlabel_str = "Distance / best distance for the instance",
+              xlabel_str = "Distancia / melhor distancia da instancia",
         )
 
         plot_grouped_histogram(
             grupo.df, :pickers_ratio, :allocation_method,
-            "Picker count (ratio vs. best) — $(grupo.label)",
+                "Razao de pickers - $(grupo.label)",
             "hist_picker_count_$(_safe_filename(grupo.slug))_ratio.png",
             hist_dir;
-            xlabel_str = "Picker count / best count for the instance",
+                xlabel_str = "Pickers / menor quantidade da instancia",
         )
     end
 end
@@ -325,7 +383,6 @@ function plot_boxplot_faceted(
     ylabel_str::AbstractString = string(value_col),
 )
     if isempty(df)
-        @warn "DataFrame is empty for \"$title_str\"; boxplot was not generated."
         return nothing
     end
 
@@ -357,15 +414,12 @@ function plot_boxplot_faceted(
             title = abbreviate(string(f)),
             ylabel = ylabel_str,
             legend = false,
-            xrotation = 20,
             titlefontsize = 9,
             guidefontsize = 8,
-            tickfontsize = 7,
         )
 
         for categoria in categorias
             dados = sub[string.(sub[!, x_col]) .== categoria, value_col]
-
             isempty(dados) && continue
 
             boxplot!(
@@ -390,15 +444,13 @@ function plot_boxplot_faceted(
     )
 
     filename = replace(filename, r"[^A-Za-z0-9_.-]" => "_")
-
     mkpath(output_dir)
-
     caminho = joinpath(output_dir, filename)
 
     savefig(layout_final, caminho)
-
-    return layout_final
+    return caminho
 end
+
 
 function gerar_boxplots(df::DataFrame, box_dir::AbstractString)
     for grupo in split_merge_groups(df)
@@ -447,7 +499,6 @@ function performance_profile(
     lower_is_better::Bool = true,
 )
     if isempty(df)
-        @warn "DataFrame is empty for \"$title_str\"; performance profile was not generated."
         return nothing
     end
 
@@ -487,7 +538,6 @@ function performance_profile(
 
     n_problems = length(problems)
     if n_problems == 0
-        @warn "No instances found for \"$title_str\"."
         return nothing
     end
 
@@ -499,8 +549,8 @@ function performance_profile(
 
     p_plot = plot(
         title = title_str,
-        xlabel = "τ (ratio to the best result)",
-        ylabel = "ρ(τ) — fraction of instances",
+        xlabel = "τ (razão para o melhor resultado)",
+        ylabel = "ρ(τ) - fração de instâncias",
         ylim = (0, 1.05),
         legend = :outertopright,
         legendfontsize = 7,
@@ -519,15 +569,12 @@ end
 
 function gerar_performance_profiles(df::DataFrame, perf_dir::AbstractString)
     df = copy(df)
-    df.method_heuristic = string.(
-        abbreviate.(string.(df.allocation_method)), " | ",
-        abbreviate.(string.(df.routing_heuristic))
-    )
+        df.method_heuristic = string.(df.allocation_method, " | ", df.routing_heuristic)
 
     for grupo in split_merge_groups(df)
         performance_profile(
             grupo.df, :distance, :method_heuristic, :data_id,
-            "Performance Profile — Distance — $(grupo.label)",
+                "Perfil de desempenho - distancia - $(grupo.label)",
             "performance_profile_distance_$(_safe_filename(grupo.slug)).png",
             perf_dir;
             lower_is_better = true,
@@ -535,7 +582,7 @@ function gerar_performance_profiles(df::DataFrame, perf_dir::AbstractString)
 
         performance_profile(
             grupo.df, :sum_pickers, :method_heuristic, :data_id,
-            "Performance Profile — Picker Count — $(grupo.label)",
+                "Perfil de desempenho - pickers - $(grupo.label)",
             "performance_profile_picker_count_$(_safe_filename(grupo.slug)).png",
             perf_dir;
             lower_is_better = true,
@@ -543,20 +590,32 @@ function gerar_performance_profiles(df::DataFrame, perf_dir::AbstractString)
     end
 end
 
-function gerar_comparacoes(csv_path::AbstractString = COMPARE_CSV_PATH)
-    df = load_compare_data(csv_path)
-    add_ratio_columns!(df)
-    dirs = ensure_output_dirs()
+function gerar_comparacoes(
+    csv_path::AbstractString = COMPARE_CSV_PATH,
+    report_path::AbstractString = REPORT_TXT_PATH,
+)
+    mkpath(dirname(report_path))
 
-    imprimir_tabelas(df)
+    open(report_path, "w") do io
+        try
+            df = load_compare_data(csv_path)
+            results = write_analysis_report(io, csv_path, df)
 
-    gerar_histogramas(df, dirs.histogramas)
-    gerar_boxplots(df, dirs.boxplots)
-    gerar_performance_profiles(df, dirs.performance)
+            if !isempty(results)
+                dirs = ensure_output_dirs()
+                redirect_stdout(io) do
+                    gerar_histogramas(results, dirs.histogramas)
+                    gerar_boxplots(results, dirs.boxplots)
+                    gerar_performance_profiles(results, dirs.performance)
+                end
+                println(io, "\nGraficos salvos em: ", abspath(GRAFICOS_DIR))
+            end
+        catch error
+            println(io, "\nFalha na análise: ", sprint(showerror, error))
+        end
+    end
 
-    println("\nCharts saved to: ", GRAFICOS_DIR)
-
-    return nothing
+    return report_path
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__
